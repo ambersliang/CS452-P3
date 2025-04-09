@@ -32,23 +32,20 @@
  */
 size_t btok(size_t bytes)
 {
-    size_t needed_bytes = bytes + sizeof(struct avail);
 
-    size_t k = SMALLEST_K;
-
-    while ((UINT64_C(1) << k) < needed_bytes)
-    {
-        if (k >= MAX_K - 1) // Prevent overflow/infinite loop if size is huge
-            break;
-        k++;
-    }
-
-    if (k < SMALLEST_K)
-    {
-        k = SMALLEST_K;
-    }
-
-    return k;
+        size_t needed_bytes = bytes + sizeof(struct avail);
+        size_t k = SMALLEST_K;
+    
+        while ((UINT64_C(1) << k) < needed_bytes)
+        {
+            if (k >= MAX_K - 1)
+                break;
+            k++;
+        }
+    
+        return (k < SMALLEST_K) ? SMALLEST_K : k;
+    
+    
 }
 
 struct avail *buddy_calc(struct buddy_pool *pool, struct avail *buddy)
@@ -103,12 +100,12 @@ void *buddy_malloc(struct buddy_pool *pool, size_t size)
         return NULL;
     }
 
-     // Split blocks until we reach the desired size
+    // Split blocks until we reach the desired size
     while (current_k > k)
     {
         // Get the block to split
         struct avail *block = pool->avail[current_k].next;
-        
+
         // Remove it from the free list
         block->next->prev = block->prev;
         block->prev->next = block->next;
@@ -120,14 +117,12 @@ void *buddy_malloc(struct buddy_pool *pool, size_t size)
         // Initialize the buddy block
         buddy->tag = BLOCK_AVAIL;
         buddy->kval = current_k;
-        
-        // Add buddy to the free list at the new size class
         buddy->next = pool->avail[current_k].next;
         buddy->prev = &pool->avail[current_k];
         pool->avail[current_k].next->prev = buddy;
         pool->avail[current_k].next = buddy;
 
-        // Put original block to in the new smaller size class
+        // Update the original block
         block->kval = current_k;
         block->next = &pool->avail[current_k];
         block->prev = &pool->avail[current_k];
@@ -208,10 +203,10 @@ void buddy_init(struct buddy_pool *pool, size_t size)
 {
     size_t kval = 0;
     if (size == 0)
-        kval = DEFAULT_K;
+    kval = DEFAULT_K;
     else
-        kval = btok(size);
-
+    kval = btok(size);
+    
     if (kval < MIN_K)
         kval = MIN_K;
     if (kval > MAX_K)

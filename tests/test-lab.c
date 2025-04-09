@@ -133,6 +133,50 @@ void test_buddy_init(void)
     }
 }
 
+/**
+ * Test buddy_calc by allocating a block, computing its buddy,
+ * and making sure the buddy address is correct based on XOR logic.
+ */
+void test_buddy_calc_correctness(void)
+{
+  fprintf(stderr, "->Testing buddy_calc correctness\n");
+  struct buddy_pool pool;
+  buddy_init(&pool, UINT64_C(1) << MIN_K);
+
+  void *mem = buddy_malloc(&pool, 1);
+  struct avail *block = (struct avail *)((uintptr_t)mem - sizeof(struct avail));
+  struct avail *buddy = buddy_calc(&pool, block);
+
+  // Check if the buddy is offset exactly 2^kval from the block
+  uintptr_t offset1 = (uintptr_t)block - (uintptr_t)pool.base;
+  uintptr_t offset2 = (uintptr_t)buddy - (uintptr_t)pool.base;
+  size_t block_size = UINT64_C(1) << block->kval;
+
+  assert((offset1 ^ offset2) == block_size);
+
+  buddy_free(&pool, mem);
+  buddy_destroy(&pool);
+}
+
+/**
+ * Try to allocate more memory than the pool has.
+ * Should always fail.
+ */
+void test_buddy_malloc_too_large(void)
+{
+  fprintf(stderr, "->Testing allocation request larger than pool\n");
+  struct buddy_pool pool;
+  size_t total = UINT64_C(1) << MIN_K;
+  buddy_init(&pool, total);
+
+  // Ask for something way too big
+  void *mem = buddy_malloc(&pool, total * 2);
+  assert(mem == NULL);
+  assert(errno == ENOMEM);
+
+  check_buddy_pool_full(&pool);
+  buddy_destroy(&pool);
+}
 
 int main(void) {
   time_t t;
@@ -145,5 +189,8 @@ int main(void) {
   RUN_TEST(test_buddy_init);
   RUN_TEST(test_buddy_malloc_one_byte);
   RUN_TEST(test_buddy_malloc_one_large);
+  RUN_TEST(test_buddy_calc_correctness);
+  RUN_TEST(test_buddy_malloc_too_large);
+
 return UNITY_END();
 }
