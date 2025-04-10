@@ -178,6 +178,130 @@ void test_buddy_malloc_too_large(void)
   buddy_destroy(&pool);
 }
 
+/**
+ * Test memory fragmentation by allocating and freeing blocks of various sizes
+ * to simulate fragmentation and ensure proper block coalescing.
+ */
+void test_buddy_memory_fragmentation(void)
+{
+  fprintf(stderr, "->Testing memory fragmentation\n");
+  struct buddy_pool pool;
+  size_t size = UINT64_C(1) << (MIN_K + 2); 
+  buddy_init(&pool, size);
+
+  void *block1 = buddy_malloc(&pool, 16);
+  void *block2 = buddy_malloc(&pool, 32);
+  void *block3 = buddy_malloc(&pool, 64);
+  void *block4 = buddy_malloc(&pool, 128);
+  
+  buddy_free(&pool, block1);
+  buddy_free(&pool, block3);
+  
+  void *block5 = buddy_malloc(&pool, 32);  // Should fit in the freed space from block1 or block3
+  void *block6 = buddy_malloc(&pool, 16);  // Should fit in the freed space from block1
+  
+  // Free all blocks
+  buddy_free(&pool, block2);
+  buddy_free(&pool, block4);
+  buddy_free(&pool, block5);
+  buddy_free(&pool, block6);
+
+  // Check if memory pool is full
+  check_buddy_pool_full(&pool);
+
+  buddy_destroy(&pool);
+}
+
+/**
+ * Test allocating and freeing multiple blocks of different sizes
+ * to simulate a real-world usage scenario with many allocations and frees.
+ */
+void test_buddy_malloc_multiple_blocks(void)
+{
+  fprintf(stderr, "->Testing multiple allocations and frees\n");
+  struct buddy_pool pool;
+  size_t size = UINT64_C(1) << (MIN_K + 2); // Initialize a pool large enough for multiple blocks
+  buddy_init(&pool, size);
+
+  void *block1 = buddy_malloc(&pool, 64);
+  void *block2 = buddy_malloc(&pool, 128);
+  void *block3 = buddy_malloc(&pool, 256);
+  void *block4 = buddy_malloc(&pool, 512);
+
+  buddy_free(&pool, block1);
+  buddy_free(&pool, block3);
+  buddy_free(&pool, block2);
+  buddy_free(&pool, block4);
+
+  // Check the pool is back to its initial state
+  check_buddy_pool_full(&pool);
+  buddy_destroy(&pool);
+}
+
+/**
+ * Test double-freeing a block and ensure it doesn't result in undefined behavior.
+ */
+void test_buddy_double_free(void)
+{
+  fprintf(stderr, "->Testing double free\n");
+  struct buddy_pool pool;
+  size_t size = UINT64_C(1) << (MIN_K + 2); // Initialize a pool large enough
+  buddy_init(&pool, size);
+
+  void *block = buddy_malloc(&pool, 64);
+  buddy_free(&pool, block);
+
+  // Double free: should not cause undefined behavior
+  buddy_free(&pool, block); // Free again without allocation
+
+  // Check the pool is still valid after double-free
+  check_buddy_pool_full(&pool);
+  buddy_destroy(&pool);
+}
+
+/**
+ * Test allocating a block that will fit in the smallest block size (MIN_K).
+ * This ensures that the smallest block allocation logic is correct.
+ */
+void test_buddy_malloc_smallest_block(void)
+{
+  fprintf(stderr, "->Testing allocation of smallest block size\n");
+  struct buddy_pool pool;
+  size_t size = UINT64_C(1) << MIN_K; // Initialize pool just big enough for the smallest block
+  buddy_init(&pool, size);
+
+  void *mem = buddy_malloc(&pool, 1); // Request a block of size 1 byte
+  assert(mem != NULL); // Should successfully allocate 1 byte
+
+  struct avail *block = (struct avail *)((uintptr_t)mem - sizeof(struct avail));
+  assert(block->kval == MIN_K);
+  assert(block->tag == BLOCK_RESERVED);
+
+  buddy_free(&pool, mem);
+  check_buddy_pool_full(&pool);
+  buddy_destroy(&pool);
+}
+
+/**
+ * Test that buddy malloc fails gracefully when asking for more memory than available.
+ * Ensure that errno is set to ENOMEM.
+ */
+void test_buddy_malloc_fail(void)
+{
+  fprintf(stderr, "->Testing allocation failure due to insufficient memory\n");
+  struct buddy_pool pool;
+  size_t size = UINT64_C(1) << MIN_K; // Initialize a small pool
+  buddy_init(&pool, size);
+
+  // Try to allocate more memory than the pool can handle
+  void *mem = buddy_malloc(&pool, size * 2); 
+  assert(mem == NULL);  // Should fail
+  assert(errno == ENOMEM); // Should set errno to ENOMEM
+
+  buddy_destroy(&pool);
+}
+
+
 int main(void) {
   time_t t;
   unsigned seed = (unsigned)time(&t);
@@ -191,6 +315,10 @@ int main(void) {
   RUN_TEST(test_buddy_malloc_one_large);
   RUN_TEST(test_buddy_calc_correctness);
   RUN_TEST(test_buddy_malloc_too_large);
-
+  RUN_TEST(test_buddy_memory_fragmentation);
+  RUN_TEST(test_buddy_malloc_multiple_blocks); 
+  RUN_TEST(test_buddy_double_free); 
+  RUN_TEST(test_buddy_malloc_smallest_block); 
+  RUN_TEST(test_buddy_malloc_fail);
 return UNITY_END();
 }

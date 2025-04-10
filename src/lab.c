@@ -32,20 +32,23 @@
  */
 size_t btok(size_t bytes)
 {
+    if (bytes == 0)
+    {
+        return 0;
+    }
 
-        size_t needed_bytes = bytes + sizeof(struct avail);
-        size_t k = SMALLEST_K;
-    
-        while ((UINT64_C(1) << k) < needed_bytes)
-        {
-            if (k >= MAX_K - 1)
-                break;
-            k++;
-        }
-    
-        return (k < SMALLEST_K) ? SMALLEST_K : k;
-    
-    
+    size_t needed_bytes = bytes + sizeof(struct avail);
+    size_t k = SMALLEST_K;
+
+    while ((UINT64_C(1) << k) < needed_bytes)
+    {
+        if (k >= MAX_K - 1)
+            break;
+        k++;
+    }
+
+    // Ensure that the requested block size is at least MIN_K
+    return (k < MIN_K) ? MIN_K : k;
 }
 
 struct avail *buddy_calc(struct buddy_pool *pool, struct avail *buddy)
@@ -149,7 +152,13 @@ void buddy_free(struct buddy_pool *pool, void *ptr)
 
     // Move back to the start of the block metadata
     struct avail *block = (struct avail *)((uintptr_t)ptr - sizeof(struct avail));
-    
+
+    // If the block is already available, don't free it again
+    if (block->tag == BLOCK_AVAIL)
+    {
+        return; // Already freed, do nothing
+    }
+
     // Get kval of the block
     size_t k = block->kval;
 
@@ -173,7 +182,7 @@ void buddy_free(struct buddy_pool *pool, void *ptr)
         {
             block = buddy;
         }
-        
+
         k++;
         block->kval = k;
     }
